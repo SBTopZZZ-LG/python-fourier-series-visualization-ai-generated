@@ -1,6 +1,6 @@
 # visualization_app.py
 
-import sys
+import sys  # Imported sys, which was missing before 
 import pygame
 import math
 from constants import Constants
@@ -26,6 +26,13 @@ class VisualizationApp:
         self.speed_factor = 1.1  # Factor by which speed is increased/decreased
         self.time = 0  # Initialize time variable
         self.max_angular_increment = 0.1  # Maximum angular increment per sub-step (in radians)
+        
+        # Flashing text attributes
+        self.flashing_text_active = False
+        self.flashing_text_surface = None
+        self.flashing_text_rect = None
+        self.flashing_text_start_time = 0  # Time in milliseconds when flash started
+        
         self.initialize_input_screen()
 
     def initialize_input_screen(self):
@@ -264,7 +271,6 @@ class VisualizationApp:
         self.speed_multiplier = 1.0  # Reset speed multiplier
         self.time = 0  # Reset time when starting a new visualization
         self.mode = Constants.VISUALIZE_MODE
-        print("Switched to VISUALIZE_MODE")
 
     def handle_input_events(self, event):
         for item in self.input_boxes:
@@ -313,13 +319,10 @@ class VisualizationApp:
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_p:
                 self.paused = not self.paused
-                state = "Paused" if self.paused else "Resumed"
-                print(state)
             elif event.key == pygame.K_ESCAPE:
                 # Abort visualization and return to input mode
                 self.mode = Constants.INPUT_MODE
                 self.initialize_input_screen()
-                print("Aborted visualization. Returned to INPUT_MODE.")
             elif event.key == pygame.K_COMMA:  # '<' key (comma key on some keyboards)
                 self.decrease_speed()
             elif event.key == pygame.K_PERIOD:  # '>' key (period key on some keyboards)
@@ -335,19 +338,36 @@ class VisualizationApp:
         else:
             self.speed_multiplier = self.min_speed_multiplier
             print(f"Speed is at minimum multiplier: {self.speed_multiplier:.2f}")
+        # Trigger flashing text
+        self.trigger_speed_flash()
 
     def increase_speed(self):
         self.speed_multiplier *= self.speed_factor
         print(f"Speed increased. Current multiplier: {self.speed_multiplier:.2f}")
+        # Trigger flashing text
+        self.trigger_speed_flash()
 
     def toggle_hide(self):
         self.hidden = not self.hidden
         state = "hidden" if self.hidden else "visible"
         print(f"Components are now {state}.")
 
+    def trigger_speed_flash(self):
+        if not self.hidden:
+            self.flashing_text_active = True
+            # Render the text
+            text = f"Speed: {self.speed_multiplier:.2f}x"
+            font = pygame.font.SysFont(None, Constants.FONT_SIZE)
+            text_surface = font.render(text, True, Constants.WHITE)
+            # Create a surface with per-pixel alpha
+            self.flashing_text_surface = text_surface.convert_alpha()
+            self.flashing_text_rect = self.flashing_text_surface.get_rect()
+            self.flashing_text_rect.topright = (Constants.WIDTH - 10, 10)  # 10 pixels padding from top-right
+            self.flashing_text_start_time = pygame.time.get_ticks()
+
     def draw_visualization_screen(self):
-        # Fill the screen with black to clear previous drawings
-        self.screen.fill(Constants.BLACK)
+        # **Add the following line to clear the screen**
+        self.screen.fill(Constants.BLACK)  # Clear the screen to hide input elements
 
         # Draw the traces of the joints
         for idx, joint_trace in enumerate(self.joint_traces):
@@ -388,6 +408,18 @@ class VisualizationApp:
                 paused_font = pygame.font.SysFont(None, Constants.BUTTON_FONT_SIZE)
                 paused_surf = paused_font.render("Paused", True, Constants.RED)
                 self.screen.blit(paused_surf, (Constants.WIDTH // 2 - paused_surf.get_width() // 2, 10))
+
+        # Handle flashing text
+        if self.flashing_text_active and self.flashing_text_surface:
+            current_time = pygame.time.get_ticks()
+            elapsed = current_time - self.flashing_text_start_time
+            if elapsed < 500:  # 500 milliseconds
+                # Calculate alpha: start at 255, fade to 0
+                alpha = max(255 - int(255 * (elapsed / 500)), 0)
+                self.flashing_text_surface.set_alpha(alpha)
+                self.screen.blit(self.flashing_text_surface, self.flashing_text_rect)
+            else:
+                self.flashing_text_active = False
 
     def update_visualization(self):
         if not self.paused:
