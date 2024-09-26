@@ -79,6 +79,29 @@ class InputBox:
         self.text = ''
         self.txt_surface = FONT.render(self.placeholder, True, GRAY)
 
+# Define ColorInput class
+class ColorInput(InputBox):
+    def __init__(self, x, y, w, h, placeholder='', unit=''):
+        super().__init__(x, y, w, h, placeholder, unit)
+        # Set default color to a visible color, e.g., red
+        if not self.text:
+            self.text = '#FF0000'
+            self.txt_surface = FONT.render(self.text, True, WHITE)
+
+    def get_color(self):
+        text = self.text.strip()
+        if text.startswith('#'):
+            text = text[1:]
+        if len(text) != 6:
+            return None
+        try:
+            r = int(text[0:2], 16)
+            g = int(text[2:4], 16)
+            b = int(text[4:6], 16)
+            return (r, g, b)
+        except ValueError:
+            return None
+
 # Define Button class
 class Button:
     def __init__(self, x, y, w, h, text, callback, color=GRAY, hover_color=LIGHT_BLUE):
@@ -104,6 +127,29 @@ class Button:
         text_rect = self.txt_surface.get_rect(center=self.rect.center)
         screen.blit(self.txt_surface, text_rect)
 
+# Define CheckBox class
+class CheckBox:
+    def __init__(self, x, y, size=20, checked=False):
+        self.rect = pygame.Rect(x, y, size, size)
+        self.checked = checked
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.rect.collidepoint(event.pos):
+                self.checked = not self.checked
+
+    def draw(self, screen):
+        pygame.draw.rect(screen, WHITE, self.rect, 2)
+        if self.checked:
+            # Draw checkmark
+            pygame.draw.line(screen, WHITE, (self.rect.x, self.rect.y),
+                             (self.rect.x + self.rect.width, self.rect.y + self.rect.height), 2)
+            pygame.draw.line(screen, WHITE, (self.rect.x + self.rect.width, self.rect.y),
+                             (self.rect.x, self.rect.y + self.rect.height), 2)
+
+    def is_checked(self):
+        return self.checked
+
 # Application States
 INPUT_MODE = 'input'
 VISUALIZE_MODE = 'visualize'
@@ -111,11 +157,13 @@ VISUALIZE_MODE = 'visualize'
 class VisualizationApp:
     def __init__(self):
         self.mode = INPUT_MODE
-        self.lengths = [100, 80, 60, 40]
-        self.speeds = [0.02, 0.04, 0.06, 0.08]
+        self.lengths = [150, 50]  # Starting with 2 lines
+        self.speeds = [0.05, -0.15]
         self.input_boxes = []  # List to hold tuples: ("label", surface, rect) or ("input", InputBox, None)
+        self.joints = []  # List to hold joint dictionaries
         self.buttons = []
         self.trace_points = []
+        self.joint_traces = []  # List to store the trace points of each joint
         self.paused = False
         self.hidden = False  # Flag to track visibility of lines, joints, and texts
         self.speed_multiplier = 1.0  # Initial speed multiplier
@@ -127,6 +175,7 @@ class VisualizationApp:
 
     def initialize_input_screen(self):
         self.input_boxes = []
+        self.joints = []
         self.buttons = []
 
         # Define layout parameters for centering and spacing
@@ -206,6 +255,30 @@ class VisualizationApp:
             speed_box.txt_surface = FONT.render(speed_box.text, True, WHITE)
             self.input_boxes.append(("input", speed_box, None))
 
+            # If not the first line, add a joint above this line
+            if i > 0:
+                joint_y = y_pos - input_spacing_y // 2
+                joint_checkbox = CheckBox(
+                    x=WIDTH // 2 - 300,
+                    y=joint_y,
+                    size=20,
+                    checked=False
+                )
+                joint_color_input = ColorInput(
+                    x=WIDTH // 2 - 250,
+                    y=joint_y,
+                    w=100,
+                    h=32,
+                    placeholder='#FF0000',  # Default to red for visibility
+                    unit=''
+                )
+                self.joints.append({
+                    'checkbox': joint_checkbox,
+                    'color_input': joint_color_input
+                })
+                self.input_boxes.append(("joint_checkbox", joint_checkbox, None))
+                self.input_boxes.append(("joint_color", joint_color_input, None))
+
     def add_line(self):
         new_length = 50
         new_speed = 0.02
@@ -249,6 +322,30 @@ class VisualizationApp:
         speed_box.txt_surface = FONT.render(speed_box.text, True, WHITE)
         self.input_boxes.append(("input", speed_box, None))
 
+        # Add joint for the new line if it's not the first line
+        if i > 0:
+            joint_y = y_pos - input_spacing_y // 2
+            joint_checkbox = CheckBox(
+                x=WIDTH // 2 - 300,
+                y=joint_y,
+                size=20,
+                checked=False
+            )
+            joint_color_input = ColorInput(
+                x=WIDTH // 2 - 250,
+                y=joint_y,
+                w=100,
+                h=32,
+                placeholder='#FF0000',  # Default to red for visibility
+                unit=''
+            )
+            self.joints.append({
+                'checkbox': joint_checkbox,
+                'color_input': joint_color_input
+            })
+            self.input_boxes.append(("joint_checkbox", joint_checkbox, None))
+            self.input_boxes.append(("joint_color", joint_color_input, None))
+
         # Update lengths and speeds lists
         self.lengths.append(new_length)
         self.speeds.append(new_speed)
@@ -259,6 +356,13 @@ class VisualizationApp:
             for _ in range(3):
                 if self.input_boxes:
                     self.input_boxes.pop()
+            # If there is a joint above this line, remove it
+            if len(self.joints) > 0:
+                # Remove joint checkbox and color input from input_boxes
+                for _ in range(2):
+                    if self.input_boxes:
+                        self.input_boxes.pop()
+                self.joints.pop()
             # Remove from lengths and speeds
             self.lengths.pop()
             self.speeds.pop()
@@ -274,8 +378,8 @@ class VisualizationApp:
                 box = item[1]
                 if 'pixels' in box.unit:
                     length = box.get_value()
-                    if length is None:
-                        print("Invalid length input detected. Please enter valid numbers.")
+                    if length is None or length <= 0:
+                        print("Invalid length input detected. Please enter valid positive numbers.")
                         return
                     lengths.append(length)
                 elif 'rad/frame' in box.unit:
@@ -290,6 +394,7 @@ class VisualizationApp:
         self.lengths = lengths
         self.speeds = speeds
         self.trace_points = []
+        self.joint_traces = [[] for _ in self.joints]  # Initialize joint traces
         self.paused = False
         self.hidden = False  # Reset hidden state when starting visualization
         self.speed_multiplier = 1.0  # Reset speed multiplier
@@ -301,6 +406,12 @@ class VisualizationApp:
             if item[0] == "input":
                 box = item[1]
                 box.handle_event(event)
+            elif item[0] == "joint_checkbox":
+                checkbox = item[1]
+                checkbox.handle_event(event)
+            elif item[0] == "joint_color":
+                color_input = item[1]
+                color_input.handle_event(event)
         for button in self.buttons:
             button.handle_event(event)
 
@@ -310,7 +421,7 @@ class VisualizationApp:
         title_surf = BUTTON_FONT.render("Configure Rotating Lines", True, WHITE)
         screen.blit(title_surf, (WIDTH // 2 - title_surf.get_width() // 2, 10))
 
-        # Draw input boxes and labels
+        # Draw input boxes, labels, checkboxes, and color inputs
         for item in self.input_boxes:
             if item[0] == "label":
                 label_surf, label_rect = item[1], item[2]
@@ -321,6 +432,12 @@ class VisualizationApp:
                     box.draw(screen)
                 else:
                     print(f"Error: Expected InputBox instance, got {type(box)}")
+            elif item[0] == "joint_checkbox":
+                checkbox = item[1]
+                checkbox.draw(screen)
+            elif item[0] == "joint_color":
+                color_input = item[1]
+                color_input.draw(screen)
 
         # Draw buttons
         for button in self.buttons:
@@ -364,7 +481,17 @@ class VisualizationApp:
         pass
 
     def draw_visualization_screen(self):
-        # Draw the trace
+        screen.fill(BLACK)
+
+        # Draw the traces of the joints
+        for idx, joint_trace in enumerate(self.joint_traces):
+            if len(joint_trace) > 1:
+                color = self.joints[idx]['color_input'].get_color()
+                if color is None:
+                    color = WHITE  # Default color if invalid
+                pygame.draw.lines(screen, color, False, joint_trace, 1)
+
+        # Draw the trace of the last endpoint
         if len(self.trace_points) > 1:
             pygame.draw.lines(screen, DRAW_COLOR, False, self.trace_points, 1)
 
@@ -425,6 +552,12 @@ class VisualizationApp:
                 # Store the position of the last endpoint
                 self.trace_points.append(positions[-1])
 
+                # Store the positions of the enabled joints
+                for idx, joint in enumerate(self.joints):
+                    if joint['checkbox'].is_checked():
+                        # The position of the joint is positions[idx + 1]
+                        self.joint_traces[idx].append(positions[idx + 1])
+
     def run(self):
         while True:
             for event in pygame.event.get():
@@ -440,7 +573,6 @@ class VisualizationApp:
                 self.draw_input_screen()
             elif self.mode == VISUALIZE_MODE:
                 self.update_visualization()
-                screen.fill(BLACK)
                 self.draw_visualization_screen()
 
             pygame.display.flip()
