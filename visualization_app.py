@@ -33,6 +33,17 @@ class VisualizationApp:
         self.flashing_text_rect = None
         self.flashing_text_start_time = 0  # Time in milliseconds when flash started
         
+        # Zoom attributes
+        self.scale = 1.0  # Initial scale factor
+        self.min_scale = 0.1  # Minimum zoom out limit
+        self.max_scale = 5.0  # Maximum zoom in limit
+        self.zoom_step = 0.1  # Zoom increment/decrement step
+        
+        # Panning attributes
+        self.view_offset = pygame.Vector2(0, 0)  # Current view offset (x, y)
+        self.pan_speed = 10  # Speed at which the view pans per key press
+        self.total_length = sum(self.lengths)  # Sum of all lengths from inputs
+        
         self.initialize_input_screen()
 
     def initialize_input_screen(self):
@@ -217,6 +228,7 @@ class VisualizationApp:
         # Update lengths and speeds lists
         self.lengths.append(new_length)
         self.speeds.append(new_speed)
+        self.total_length = sum(self.lengths)  # Update total_length
 
     def remove_line(self):
         if len(self.lengths) > 0:
@@ -237,6 +249,7 @@ class VisualizationApp:
             # Remove from lengths and speeds
             self.lengths.pop()
             self.speeds.pop()
+            self.total_length = sum(self.lengths)  # Update total_length
         else:
             print("No more lines to remove.")
 
@@ -270,6 +283,9 @@ class VisualizationApp:
         self.hidden = False  # Reset hidden state when starting visualization
         self.speed_multiplier = 1.0  # Reset speed multiplier
         self.time = 0  # Reset time when starting a new visualization
+        self.scale = 1.0  # Reset zoom level
+        self.view_offset = pygame.Vector2(0, 0)  # Reset panning
+        self.total_length = sum(self.lengths)  # Update total_length
         self.mode = Constants.VISUALIZE_MODE
 
     def handle_input_events(self, event):
@@ -329,6 +345,45 @@ class VisualizationApp:
                 self.increase_speed()
             elif event.key == pygame.K_h:  # 'H' key to hide/show lines, joints, and texts
                 self.toggle_hide()
+            elif event.key in (pygame.K_PLUS, pygame.K_EQUALS):  # '+' key
+                self.zoom_in()
+            elif event.key == pygame.K_MINUS:  # '-' key
+                self.zoom_out()
+            elif event.key == pygame.K_w:  # 'W' key - Pan Down (Reversed)
+                self.pan(pygame.Vector2(0, self.pan_speed))
+            elif event.key == pygame.K_s:  # 'S' key - Pan Up (Reversed)
+                self.pan(pygame.Vector2(0, -self.pan_speed))
+            elif event.key == pygame.K_a:  # 'A' key - Pan Right (Reversed)
+                self.pan(pygame.Vector2(self.pan_speed, 0))
+            elif event.key == pygame.K_d:  # 'D' key - Pan Left (Reversed)
+                self.pan(pygame.Vector2(-self.pan_speed, 0))
+            elif event.key == pygame.K_0:  # '0' key - Reset View
+                self.reset_view()
+        elif event.type == pygame.MOUSEBUTTONDOWN:
+            if event.button == 4:  # Mouse wheel up
+                self.zoom_in()
+            elif event.button == 5:  # Mouse wheel down
+                self.zoom_out()
+
+    def pan(self, direction: pygame.Vector2):
+        # Update the view offset
+        self.view_offset += direction
+
+        # Calculate the maximum allowed offset based on total_length and current scale
+        max_offset_x = self.total_length * self.scale
+        max_offset_y = self.total_length * self.scale
+
+        # Clamp the view_offset to stay within the allowed boundaries
+        self.view_offset.x = max(-max_offset_x, min(self.view_offset.x, max_offset_x))
+        self.view_offset.y = max(-max_offset_y, min(self.view_offset.y, max_offset_y))
+
+        print(f"Panned to offset: ({self.view_offset.x}, {self.view_offset.y})")
+
+    def reset_view(self):
+        self.scale = 1.0
+        self.view_offset = pygame.Vector2(0, 0)
+        print("View reset to default.")
+        self.trigger_speed_flash()
 
     def decrease_speed(self):
         new_multiplier = self.speed_multiplier / self.speed_factor
@@ -355,8 +410,8 @@ class VisualizationApp:
     def trigger_speed_flash(self):
         if not self.hidden:
             self.flashing_text_active = True
-            # Render the text
-            text = f"Speed: {self.speed_multiplier:.2f}x"
+            # Render the text with speed, zoom, and panning information
+            text = f"Speed: {self.speed_multiplier:.2f}x | Zoom: {self.scale:.1f}x | Pan: ({int(self.view_offset.x)}, {int(self.view_offset.y)})"
             font = pygame.font.SysFont(None, Constants.FONT_SIZE)
             text_surface = font.render(text, True, Constants.WHITE)
             # Create a surface with per-pixel alpha
@@ -365,27 +420,51 @@ class VisualizationApp:
             self.flashing_text_rect.topright = (Constants.WIDTH - 10, 10)  # 10 pixels padding from top-right
             self.flashing_text_start_time = pygame.time.get_ticks()
 
-    def draw_visualization_screen(self):
-        # **Add the following line to clear the screen**
-        self.screen.fill(Constants.BLACK)  # Clear the screen to hide input elements
+    def zoom_in(self):
+        if self.scale < self.max_scale:
+            self.scale += self.zoom_step
+            print(f"Zoomed In. Current scale: {self.scale:.1f}x")
+            self.trigger_speed_flash()
 
+    def zoom_out(self):
+        if self.scale > self.min_scale:
+            self.scale -= self.zoom_step
+            print(f"Zoomed Out. Current scale: {self.scale:.1f}x")
+            self.trigger_speed_flash()
+
+    def draw_visualization_screen(self):
+        # Clear the screen to hide input elements
+        self.screen.fill(Constants.BLACK)
+        
         # Draw the traces of the joints
         for idx, joint_trace in enumerate(self.joint_traces):
             if len(joint_trace) > 1:
                 color = self.joints[idx]['color_input'].get_color()
                 if color is None:
                     color = Constants.WHITE  # Default color if invalid
-                pygame.draw.lines(self.screen, color, False, joint_trace, 2)  # Thickness 2
+                # Apply scaling and panning to joint trace points
+                scaled_panned_trace = [(
+                    Constants.CENTER[0] + (point[0] * self.scale) + self.view_offset.x,
+                    Constants.CENTER[1] + (point[1] * self.scale) + self.view_offset.y
+                ) for point in joint_trace]
+                pygame.draw.aalines(self.screen, color, False, scaled_panned_trace, 1)  # Thickness 1
 
         # Draw the trace of the last endpoint
         if len(self.trace_points) > 1:
-            pygame.draw.lines(self.screen, Constants.DRAW_COLOR, False, self.trace_points, 1)
+            scaled_panned_trace_points = [(
+                Constants.CENTER[0] + (point[0] * self.scale) + self.view_offset.x,
+                Constants.CENTER[1] + (point[1] * self.scale) + self.view_offset.y
+            ) for point in self.trace_points]
+            pygame.draw.aalines(self.screen, Constants.DRAW_COLOR, False, scaled_panned_trace_points, 1)
 
-        # Calculate positions
-        positions = [Constants.CENTER]
+        # Calculate positions with scaling and panning (relative to center)
+        positions = [(
+            Constants.CENTER[0] + self.view_offset.x,
+            Constants.CENTER[1] + self.view_offset.y
+        )]
         for i in range(len(self.lengths)):
             angle = self.speeds[i] * self.time  # Calculate angle based on time
-            length = self.lengths[i]
+            length = self.lengths[i] * self.scale  # Scale the length
             x = positions[i][0] + length * math.cos(angle)
             y = positions[i][1] + length * math.sin(angle)
             positions.append((x, y))
@@ -393,12 +472,18 @@ class VisualizationApp:
         if not self.hidden:
             # Draw the lines and joints only if not hidden
             for i in range(len(self.lengths)):
-                pygame.draw.line(self.screen, Constants.WHITE, positions[i], positions[i + 1], 2)
+                # Use anti-aliased lines
+                pygame.draw.aaline(self.screen, Constants.WHITE, positions[i], positions[i + 1], 1)
                 if i < len(self.lengths) - 1:
-                    pygame.draw.circle(self.screen, Constants.LIGHT_BLUE, (int(positions[i + 1][0]), int(positions[i + 1][1])), 5)
+                    # Apply scaling and panning to joint positions
+                    joint_pos = (
+                        int(positions[i + 1][0]),
+                        int(positions[i + 1][1])
+                    )
+                    pygame.draw.circle(self.screen, Constants.LIGHT_BLUE, joint_pos, 3)  # Smaller radius for smoothness
 
             # Draw faint control label at bottom right
-            control_text = "Press P to pause/resume, Escape to abort, < to decrease speed, > to increase speed, H to hide/show components"
+            control_text = "Press P to pause/resume, Escape to abort, < to decrease speed, > to increase speed, H to hide/show components, WASD to pan, 0 to reset, +/- to zoom"
             control_font = pygame.font.SysFont(None, Constants.FONT_SIZE)
             control_surf = control_font.render(control_text, True, Constants.FAINT_WHITE)
             self.screen.blit(control_surf, (Constants.WIDTH - control_surf.get_width() - 10, Constants.HEIGHT - control_surf.get_height() - 10))
@@ -440,8 +525,8 @@ class VisualizationApp:
                 self.time += delta_time
                 remaining_time -= delta_time
 
-                # Calculate positions for this sub-step
-                positions = [Constants.CENTER]
+                # Calculate positions for this sub-step (relative to center)
+                positions = [(0, 0)]  # Start at origin (center)
                 for i in range(len(self.lengths)):
                     angle = self.speeds[i] * self.time
                     length = self.lengths[i]
@@ -449,10 +534,10 @@ class VisualizationApp:
                     y = positions[i][1] + length * math.sin(angle)
                     positions.append((x, y))
 
-                # Store the position of the last endpoint
+                # Store the position of the last endpoint (relative to center)
                 self.trace_points.append(positions[-1])
 
-                # Store the positions of the enabled joints
+                # Store the positions of the enabled joints (relative to center)
                 for idx, joint in enumerate(self.joints):
                     if joint['checkbox'].is_checked():
                         # The position of the joint is positions[idx + 1]
