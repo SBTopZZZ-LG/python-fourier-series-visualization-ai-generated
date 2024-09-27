@@ -10,6 +10,7 @@
 - [Usage](#usage)
 - [Controls](#controls)
 - [Customization](#customization)
+- [License](#license)
 - [Acknowledgements](#acknowledgements)
 
 ## Overview
@@ -134,6 +135,10 @@ The application offers extensive customization options to tailor the visualizati
 ### Managing Joints
 
 - **Joint Points:** For visual complexity, enable joints between lines. Assign distinct colors to each joint to differentiate them within the visualization.
+
+## License
+
+This project is licensed under the [MIT License](LICENSE). You are free to use, modify, and distribute it as per the terms of the license.
 
 ## Acknowledgements
 
