@@ -357,7 +357,7 @@ class VisualizationApp:
                 self.pan(pygame.Vector2(self.pan_speed, 0))
             elif event.key == pygame.K_d:  # 'D' key - Pan Left (Reversed)
                 self.pan(pygame.Vector2(-self.pan_speed, 0))
-            elif event.key == pygame.K_0:  # '0' key - Reset View
+            elif event.key == pygame.K_0:  # '0' key - Reset Zoom and Pan
                 self.reset_view()
         elif event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 4:  # Mouse wheel up
