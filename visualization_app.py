@@ -483,7 +483,7 @@ class VisualizationApp:
                     pygame.draw.circle(self.screen, Constants.LIGHT_BLUE, joint_pos, 3)  # Smaller radius for smoothness
 
             # Draw faint control label at bottom right
-            control_text = "Press P to pause/resume, Escape to abort, < to decrease speed, > to increase speed, H to hide/show components, WASD to pan, 0 to reset, +/- to zoom"
+            control_text = "P: Pause/Resume, Esc: Abort, < >: Adjust speed, H: Hide/show UI, WASD: Move/Pan, 0: Reset Zoom/Pan, + -: Zoom"
             control_font = pygame.font.SysFont(None, Constants.FONT_SIZE)
             control_surf = control_font.render(control_text, True, Constants.FAINT_WHITE)
             self.screen.blit(control_surf, (Constants.WIDTH - control_surf.get_width() - 10, Constants.HEIGHT - control_surf.get_height() - 10))
